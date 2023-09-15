@@ -1,10 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file RenderLauncherCL.cpp
-	\brief Implementation of OpenCL-platform Grid renderer.
-*/
 
 #ifdef NANOVDB_USE_OPENCL
 

@@ -1,10 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file AssetLoader.h
-	\brief Classes for asynchronous asset loading.
-*/
 
 #include <string>
 #include <cstring>

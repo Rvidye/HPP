@@ -1,10 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file FrameBufferHost.h
-	\brief Class definition for an image renderer using host memory.
-*/
 
 #pragma once
 #include "FrameBuffer.h"

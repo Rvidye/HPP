@@ -1,11 +1,3 @@
-/// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file RenderLauncherC.cpp
-	\brief Implementation of C99-platform Grid renderer.
-*/
-
 #include <iostream>
 #include <sstream>
 #include <fstream>

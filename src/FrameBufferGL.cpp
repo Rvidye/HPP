@@ -10,10 +10,8 @@
 
 #include<GL/glew.h>
 
-#if defined(NANOVDB_USE_CUDA) && defined(NANOVDB_USE_CUDA_GL)
 #include <cuda_gl_interop.h>
 #include <cuda_runtime_api.h>
-#endif
 
 #if defined(NANOVDB_USE_OPENCL) && 0
 #ifdef __APPLE__
@@ -58,7 +56,6 @@ bool checkGL(const char* file, const int line)
     return !foundError;
 }
 
-#if defined(NANOVDB_USE_CUDA) && defined(NANOVDB_USE_CUDA_GL)
 #define NANOVDB_CUDA_SAFE_CALL(x) checkCUDA(x, __FILE__, __LINE__)
 
 static bool checkCUDA(cudaError_t result, const char* file, const int line)
@@ -69,7 +66,6 @@ static bool checkCUDA(cudaError_t result, const char* file, const int line)
     }
     return true;
 }
-#endif
 
 FrameBufferGL::FrameBufferGL(void* context, void* display)
     : mBufferResourceId(0)
@@ -111,10 +107,8 @@ void* FrameBufferGL::display() const
     return mDisplay;
 }
 
-void* FrameBufferGL::cudaMap(AccessType /*access*/, void* /*stream*/)
+void* FrameBufferGL::cudaMap(AccessType access, void* stream)
 {
-#if defined(NANOVDB_USE_CUDA) && defined(NANOVDB_USE_CUDA_GL)
-
     int writeIndex = (mIndex + 1) % BUFFER_COUNT;
 
     if (!mSize)
@@ -148,19 +142,14 @@ void* FrameBufferGL::cudaMap(AccessType /*access*/, void* /*stream*/)
     NANOVDB_GL_SAFE_CALL(glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0));
 
     return ptr;
-#else
-    return nullptr;
-#endif
 }
 
-void FrameBufferGL::cudaUnmap(void* /*stream*/)
+void FrameBufferGL::cudaUnmap(void* stream)
 {
-#if defined(NANOVDB_USE_CUDA) && defined(NANOVDB_USE_CUDA_GL)
     int writeIndex = (mIndex + 1) % BUFFER_COUNT;
     NANOVDB_CUDA_SAFE_CALL(cudaGraphicsUnmapResources(
         1, (cudaGraphicsResource**)&mBufferResourcesCUDA[writeIndex], (cudaStream_t)stream));
     invalidate();
-#endif
 }
 
 void* FrameBufferGL::clMap(AccessType /*access*/, void* /*stream*/)
@@ -232,7 +221,6 @@ void* FrameBufferGL::map(AccessType access)
         accessGL |= GL_MAP_READ_BIT;
 
     ptr = glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, mSize, accessGL);
-#endif
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     NANOVDB_GL_CHECKERRORS();
 
@@ -450,8 +438,6 @@ bool FrameBufferGL::genPixelPackBufferGL(int w, int h, GLenum internalFormatGL, 
 
         mBufferResourcesCUDA[i] = nullptr;
         mBufferResourcesCL[i] = nullptr;
-
-#if defined(NANOVDB_USE_CUDA) && defined(NANOVDB_USE_CUDA_GL)
         bool rc =
             NANOVDB_CUDA_SAFE_CALL(cudaGraphicsGLRegisterBuffer((cudaGraphicsResource**)&mBufferResourcesCUDA[i],
                                                                 mPixelPackBuffers[i],
@@ -460,7 +446,6 @@ bool FrameBufferGL::genPixelPackBufferGL(int w, int h, GLenum internalFormatGL, 
             std::cerr << "Failed to register GL PBO with CUDA" << std::endl;
             return false;
         }
-#endif
 
 #if defined(NANOVDB_USE_OPENCL) && 0
         if (contextCL) {

@@ -1,7 +1,24 @@
 #pragma once
 #include "Renderer.h"
-#include "../include/windowing.h"
+#include <X11/X.h>
+#include<X11/Xlib.h>
+#include<X11/Xutil.h>
+#include<GL/glx.h>
+#include<iostream>
 
+#include <imgui/imgui.h>
+#include <imgui/imgui_impl_opengl3.h>
+#include <imgui/imgui_impl_x11.h>
+
+enum MOUSE {
+	MOUSE_BUTTON_PRESS,
+	MOUSE_BUTTON_RELEASE,
+	MOUSE_BUTTON_MOVE,
+    MOUSE_WHEEL_UP,
+    MOUSE_WHEEL_DOWN
+};
+
+class Viewer;
 class Viewer : public RendererBase
 {
 public:
@@ -20,11 +37,8 @@ public:
     void   updateAnimationControl();
     void   setSceneFrame(int frame);
 
-    void OnKey(int key, int action);
+    void OnKey(int key);
     void OnMouse(int button, int action, int x, int y);
-
-    static void mainLoop(void* userData);
-    bool        runLoop();
 
 protected:
     void updateWindowTitle();
@@ -59,11 +73,26 @@ private:
 
     std::string getScreenShotFilename(int iteration) const;
 
-    void*  mWindow = nullptr;
-    glwindow* window = nullptr;
-   
-    int    mWindowWidth = 0;
-    int    mWindowHeight = 0;
+    Display* display;
+	XVisualInfo* visualInfo;
+	Colormap colorMap;
+	GLXFBConfig fbConfig;
+	Window window;
+	GLXContext glxcontext;
+	bool closed;
+	bool fullscreen;
+	bool guiSupport;
+	struct windowsize_t {
+		float width;
+		float height;
+	} windowSize;
+
+	void setGUISupport(bool gui);
+	void processEvents(void);
+	bool isClosed(void);
+	windowsize_t getSize(void);
+	void swapBuffers(void);
+
     int    mFps = 0;
     size_t mFpsFrame = 0;
     double mTime = 0;

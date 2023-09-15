@@ -1,12 +1,5 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
 
-/*!
-	\file FrameBufferHost.cpp
-	\brief Implementation of FrameBufferHost.
-*/
-
-#include "../include/FrameBufferHost.h"
+#include "FrameBufferHost.h"
 #include <iostream>
 #include <fstream>
 #include <iomanip>
@@ -37,11 +30,8 @@ static bool checkCUDA(cudaError_t result, const char* file, const int line)
 bool FrameBufferHost::cleanup()
 {
     if (mBuffer) {
-#if defined(NANOVDB_USE_CUDA)
         cudaFreeHost(mBuffer);
-#else
         free(mBuffer);
-#endif
     }
     mBuffer = nullptr;
 
@@ -62,11 +52,8 @@ bool FrameBufferHost::setup(int w, int h, InternalFormat format)
     mWidth = w;
     mHeight = h;
     mSize = w * h * mElementSize;
-#if defined(NANOVDB_USE_CUDA)
     NANOVDB_CUDA_SAFE_CALL(cudaMallocHost(&mBuffer, mSize));
-#else
     mBuffer = malloc(mSize);
-#endif
     return true;
 }
 
@@ -98,11 +85,8 @@ void* FrameBufferHost::cudaMap(AccessType /*access*/, void* /*stream*/)
 void FrameBufferHost::cudaUnmap(void* stream)
 {
     //int writeIndex = (mIndex + 1) % BUFFER_COUNT;
-#if defined(NANOVDB_USE_CUDA)
     NANOVDB_CUDA_SAFE_CALL(cudaStreamSynchronize(cudaStream_t(stream)));
-#else
     (void)stream;
-#endif
     invalidate();
 }
 

@@ -1,8 +1,3 @@
-/*!
-	GridManager.h
-	Class definition for a manager and loader of grid assets.
-*/
-
 #pragma once
 
 #include <string>

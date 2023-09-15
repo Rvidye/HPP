@@ -1,18 +1,10 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file RenderLauncher.cpp
-	\brief Implementation of Grid Render-platform manager.
-*/
-
-#include "../include/RenderLauncher.h"
-#include "../include/RenderFogVolumeUtils.h"
-#include "../include/RenderLevelSetUtils.h"
-#include "../include/RenderGridUtils.h"
-#include "../include/RenderPointsUtils.h"
-#include "../include/FrameBuffer.h"
-#include "../include/RenderLauncherImpl.h"
+#include "RenderLauncher.h"
+#include "RenderFogVolumeUtils.h"
+#include "RenderLevelSetUtils.h"
+#include "RenderGridUtils.h"
+#include "RenderPointsUtils.h"
+#include "FrameBuffer.h"
+#include "RenderLauncherImpl.h"
 
 const char* kMaterialClassTypeStrings[(int)MaterialClass::kNumTypes] = {"Auto", "LevelSetFast", "FogVolumePathTracer", "Grid", "PointsFast", "BlackBodyVolumePathTracer", "FogVolumeFast", "Voxels", "CameraDiagnostic"};
 const char* kCameraLensTypeStrings[(int)Camera::LensType::kNumTypes] = {"PinHole", "Spherical", "ODS"};
@@ -23,13 +15,8 @@ RenderLauncher::RenderLauncher()
     mImpls.push_back(std::make_shared<RenderLauncherCpu>());
     mImpls.push_back(std::make_shared<RenderLauncherCpuMT>());
     mImpls.push_back(std::make_shared<RenderLauncherC99>());
-
-#if defined(NANOVDB_USE_OPENGL)
     mImpls.push_back(std::make_shared<RenderLauncherGL>());
-#endif
-#if defined(NANOVDB_USE_CUDA)
     mImpls.push_back(std::make_shared<RenderLauncherCUDA>());
-#endif
 #if defined(NANOVDB_USE_OPENCL)
     mImpls.push_back(std::make_shared<RenderLauncherCL>());
 #endif

@@ -1,11 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file RenderFunctions.h
-	\brief General C++ implementation of the FogVolume rendering code.
-*/
-
 #pragma once
 
 #include <nanovdb/NanoVDB.h>

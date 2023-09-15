@@ -1,16 +1,9 @@
-/*!
-	RenderLauncherGL.cpp
-	Implementation of GL-platform Grid renderer.
-*/
-
-#ifdef NANOVDB_USE_OPENGL
-
 #include <iostream>
 #include <sstream>
 #include <fstream>
 #include <cstring>
-#include "../include/RenderLauncherImpl.h"
-#include "../include/FrameBufferGL.h"
+#include "RenderLauncherImpl.h"
+#include "FrameBufferGL.h"
 #include <nanovdb/util/NodeManager.h>
 
 static const char* g_kKernelString_Platform_h = "code/CPlatform.h";
@@ -407,5 +400,3 @@ bool RenderLauncherGL::render(MaterialClass method, int width, int height, Frame
 
     return true;
 }
-
-#endif // NANOVDB_USE_OPENGL

@@ -1,10 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file RenderLauncherC99impl.c
-	\brief Implmentation of C99 Render launcher.
-*/
 
 #ifdef __cplusplus
 extern "C" {

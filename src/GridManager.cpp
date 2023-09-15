@@ -1,10 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file GridManager.cpp
-	\brief Implementation of GridManager.
-*/
 
 #define _USE_MATH_DEFINES
 #include <iomanip>

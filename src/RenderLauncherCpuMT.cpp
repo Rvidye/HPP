@@ -1,10 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file RenderLauncherCpuMT.cpp
-	\brief Implementation of CPU-multithreaded-platform Grid renderer.
-*/
 
 #include "../include/RenderLauncherImpl.h"
 #include "../include/RenderFogVolumeUtils.h"

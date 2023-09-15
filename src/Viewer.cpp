@@ -1,39 +1,39 @@
-#include <imgui/imgui_impl_x11.h>
-#define NANOVDB_USE_IMGUI
-
-#include <cinttypes> // for PRIu64
-#include <iomanip>
-#include <iostream>
-#include <sstream>
-#include <algorithm>
-#include <cassert>
+#include<X11/X.h>
+#include<imgui/imgui.h>
+#include<imgui/imgui_internal.h>
+#include<stdlib.h>
+#include<memory.h>
+#include<X11/Xlib.h>
+#include<X11/XKBlib.h>
+#include<X11/keysym.h>
+#include<GL/glew.h>
+#include<GL/glx.h>
+#include<iostream>
 #define _USE_MATH_DEFINES
 #include <cmath>
 
+#include "Viewer.h"
+#include "RenderLauncher.h"
 
-#include "../include/Viewer.h"
-#include "../include/RenderLauncher.h"
-
-#include "../include/FrameBufferHost.h"
-#include "../include/FrameBufferGL.h"
-#include "../include/StringUtils.h"
-
+#include "FrameBufferHost.h"
+#include "FrameBufferGL.h"
+#include "StringUtils.h"
 #include <nanovdb/util/IO.h> // for NanoVDB file import
+
+#define NANOVDB_USE_IMGUI
 
 #if defined(NANOVDB_USE_OPENVDB)
 #include <nanovdb/util/OpenToNanoVDB.h>
 #endif
 
-void keyboard(glwindow* window, int key) {
+static uint64_t clockOffset = 0; 
+static const clockid_t currentclock = CLOCK_REALTIME;
+static const uint64_t frequency = 1000000000;
 
-}
-
-void mouse(glwindow* window, int button, int action, int x, int y) {
-	if(button == Button1 && action == MOUSE_BUTTON_PRESS) {
-	}
-
-    if(button == Button1 && action == MOUSE_BUTTON_RELEASE) {
-	}
+uint64_t getTimerValue() {
+	struct timespec ts;
+	clock_gettime(currentclock, &ts);
+	return (uint64_t)ts.tv_sec * frequency + (uint64_t)ts.tv_nsec;
 }
 
 Viewer::Viewer(const RendererParams& params)
@@ -49,127 +49,204 @@ Viewer::Viewer(const RendererParams& params)
 }
 
 Viewer::~Viewer()
-{}
+{
+    if(glXGetCurrentContext() == this->glxcontext) {
+		glXMakeCurrent(this->display, 0, 0);
+	}
+
+	if(this->glxcontext) {
+		glXDestroyContext(this->display, this->glxcontext);
+	}
+
+	if(this->window) {
+		XDestroyWindow(this->display, this->window);
+	}
+
+	if(this->colorMap) {
+		XFreeColormap(this->display, this->colorMap);
+	}
+
+	if(this->visualInfo) {
+		XFree(this->visualInfo);
+		this->visualInfo = NULL;
+	}
+
+	if(this->display) {
+		XCloseDisplay(this->display);
+		this->display = NULL;
+	}
+}
 
 void Viewer::close()
 {
+    XEvent ev;
+	memset(&ev, 0, sizeof (ev));
+	ev.xclient.type = ClientMessage;
+	ev.xclient.window = this->window;
+	ev.xclient.message_type = XInternAtom(this->display, "WM_PROTOCOLS", true);
+	ev.xclient.format = 32;
+	ev.xclient.data.l[0] = XInternAtom(this->display, "WM_DELETE_WINDOW", false);
+	ev.xclient.data.l[1] = CurrentTime;
+	XSendEvent(this->display, this->window, False, NoEventMask, &ev);
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplX11_Shutdown();
     ImGui::DestroyContext();
-
-    delete window;
-}
-
-void Viewer::updateWindowTitle()
-{
-    if (!mWindow)
-        return;
-
-    std::ostringstream ss;
-    ss << "NanoVDB Viewer: " << mRenderLauncher.name() << " @ " << mFps << " fps";
-    if (mSelectedSceneNodeIndex >= 0) {
-        ss << " - ";
-        ss << mSceneNodes[mSelectedSceneNodeIndex]->mName;
-        ss << '[' << mSceneNodes[mSelectedSceneNodeIndex]->mAttachments[0]->mAssetUrl.fullname() << ']';
-    }
-    //glfwSetWindowTitle((GLFWwindow*)mWindow, ss.str().c_str());
 }
 
 double Viewer::getTime()
 {
-    return window->getTime();
+    return (double)(getTimerValue() - clockOffset) / frequency;
+}
+
+Viewer::windowsize_t Viewer::getSize(void) {
+	return this->windowSize;
 }
 
 void Viewer::open()
 {
-    window = new glwindow("HPP Demo",0,0,mParams.mWidth,mParams.mHeight,460);
+    static int frameBufferAttrib[] = {
+		GLX_DOUBLEBUFFER, True,
+		GLX_X_RENDERABLE, True,
+		GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+		GLX_RENDER_TYPE, GLX_RGBA_BIT,
+		GLX_X_VISUAL_TYPE, GLX_TRUE_COLOR,
+		GLX_RED_SIZE, 8,
+		GLX_GREEN_SIZE, 8,
+		GLX_BLUE_SIZE, 8,
+		GLX_ALPHA_SIZE, 8,
+		GLX_STENCIL_SIZE, 8,
+		GLX_DEPTH_SIZE, 24,
+		None 
+	};
 
-    window->setFullscreen(false);
-    window->setKeyboardFunc(keyboard);
-    window->setMouseFunc(mouse);
+	XSetWindowAttributes winAttribs;
+	GLXFBConfig *pGlxFBConfig;
+	XVisualInfo *pTempVisInfo = NULL;
+	
+	int numFBConfigs;
+	int defaultScreen;
+	int styleMask;
 
-    mFrameBuffer.reset(new FrameBufferGL(window->getDisplay(), window->getWindow()));
-    resizeFrameBuffer(mParams.mWidth, mParams.mHeight);
-    window->setGUISupport(true);
+	this->display = XOpenDisplay(NULL);
+	defaultScreen = XDefaultScreen(this->display);
+	pGlxFBConfig = glXChooseFBConfig(this->display, defaultScreen, frameBufferAttrib, &numFBConfigs);
+	int bestFrameBufferConfig = -1, bestNumOfSamples = -1;
+	for(int i = 0; i < numFBConfigs; i++) {
+		pTempVisInfo = glXGetVisualFromFBConfig(this->display, pGlxFBConfig[i]);
+		if(pTempVisInfo != NULL) {
+			int samplesBuffer, samples;
+			glXGetFBConfigAttrib(this->display, pGlxFBConfig[i], GLX_SAMPLE_BUFFERS, &samplesBuffer);
+			glXGetFBConfigAttrib(this->display, pGlxFBConfig[i], GLX_SAMPLES, &samples);
+			if(bestFrameBufferConfig < 0 || samplesBuffer && samples > bestNumOfSamples) {
+				bestFrameBufferConfig = i;
+				bestNumOfSamples = samples;
+			}
+		}
+		XFree(pTempVisInfo);
+	}
 
+	this->fbConfig = pGlxFBConfig[bestFrameBufferConfig];
+	XFree(pGlxFBConfig);
+
+	this->visualInfo = glXGetVisualFromFBConfig(this->display, this->fbConfig);
+	winAttribs.border_pixel = 0;
+	winAttribs.background_pixmap = 0;
+	winAttribs.colormap = XCreateColormap(this->display, RootWindow(this->display, this->visualInfo->screen), this->visualInfo->visual, AllocNone);
+	this->colorMap = winAttribs.colormap;
+	winAttribs.background_pixel = BlackPixel(this->display, defaultScreen);
+	winAttribs.event_mask = ExposureMask | VisibilityChangeMask | ButtonPressMask | ButtonReleaseMask | KeyPressMask | ButtonMotionMask | StructureNotifyMask;
+	styleMask = CWBorderPixel | CWBackPixel | CWEventMask | CWColormap;
+
+	this->window = XCreateWindow(this->display, RootWindow(this->display, this->visualInfo->screen), 0, 0, mParams.mWidth, mParams.mHeight, 0, this->visualInfo->depth, InputOutput, this->visualInfo->visual, styleMask, &winAttribs);
+
+	Atom windowManagerDelete = XInternAtom(this->display, "WM_DELETE_WINDOW", True);
+	XSetWMProtocols(this->display, this->window, &windowManagerDelete, 1);
+
+	XMapWindow(this->display, this->window);
+
+	closed = false;
+
+	typedef GLXContext(*glXCreateContextAttribsARBProc)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
+	glXCreateContextAttribsARBProc glXCreateContextAttribARB = NULL;
+	glXCreateContextAttribARB = (glXCreateContextAttribsARBProc)glXGetProcAddressARB((const GLubyte*)"glXCreateContextAttribsARB");
+	const int attribs[] = {
+		GLX_CONTEXT_MAJOR_VERSION_ARB, 460 / 100,
+		GLX_CONTEXT_MINOR_VERSION_ARB, 460 % 100 / 10,
+		GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
+		GLX_CONTEXT_FLAGS_ARB, GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB | GLX_CONTEXT_DEBUG_BIT_ARB,
+		None
+	};
+
+	this->glxcontext =  glXCreateContextAttribARB(this->display, this->fbConfig, 0, True, attribs);
+	glXMakeCurrent(this->display, this->window, this->glxcontext);
+	glewInit();
+
+    std::cout << "GL_VERSION  : " << glGetString(GL_VERSION) << "\n";
+    std::cout << "GL_RENDERER : " << glGetString(GL_RENDERER) << "\n";
+    std::cout << "GL_VENDOR   : " << glGetString(GL_VENDOR) << "\n";
+
+    mFrameBuffer.reset(new FrameBufferGL(this->glxcontext, this->display));
+    this->resizeFrameBuffer(mParams.mWidth, mParams.mHeight);
+
+    this->setGUISupport(true);
     NANOVDB_GL_CHECKERRORS();
 }
 
-void Viewer::mainLoop(void* userData)
-{
-    auto viewerPtr = reinterpret_cast<Viewer*>(userData);
+void Viewer::processEvents(void) {
+	XEvent event,next_event;
+	KeySym keysym;
 
-    bool rc = viewerPtr->runLoop();
-    if (rc == false) {
-    }
-}
+	static unsigned currentButton;
 
-bool Viewer::runLoop()
-{
-    // updateAnimationControl();
-
-    // mIsDrawingPendingGlyph = false;
-    // if (mSelectedSceneNodeIndex >= 0) {
-    //     updateNodeAttachmentRequests(mSceneNodes[mSelectedSceneNodeIndex], false, mIsDumpingLog, &mIsDrawingPendingGlyph);
-    // }
-
-    // updateScene();
-
-    // render(getSceneFrame());
-    // renderViewOverlay();
-
-    // // workaround for bad GL state in ImGui...
-    // glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    // glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-    // NANOVDB_GL_CHECKERRORS();
-
-    // ImGui_ImplOpenGL3_NewFrame();
-    // ImGui_ImplGlfw_NewFrame();
-    // ImGui::NewFrame();
-    // ImGuiIO& io = ImGui::GetIO();
-
-    // drawMenuBar();
-    // drawSceneGraph();
-    // drawRenderOptionsDialog();
-    // drawRenderStatsOverlay();
-    // drawAboutDialog();
-    // drawHelpDialog();
-    // drawEventLog();
-    // drawAssets();
-    // drawPendingGlyph();
-
-    // ImGui::Render();
-
-    // ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    // ImGui::EndFrame();
-
-    // // eval fps...
-    // ++mFpsFrame;
-    // double elapsed = glfwGetTime() - mTime;
-    // if (elapsed > 1.0) {
-    //     mTime = glfwGetTime();
-    //     mFps = (int)(double(mFpsFrame) / elapsed);
-    //     updateWindowTitle();
-    //     mFpsFrame = 0;
-    // }
-
-    // window->swapBuffers();
+	while(XPending(this->display)) {
+		XNextEvent(this->display, &event);
+		switch(event.type) {
+		case KeyPress:
+			keysym = XkbKeycodeToKeysym(this->display, event.xkey.keycode, 0, 0);
+                this->OnKey(keysym);
+			break;
+		case ButtonPress:
+			currentButton = event.xbutton.button;
+            OnMouse(event.xbutton.button, MOUSE_BUTTON_PRESS, event.xbutton.x, event.xbutton.y);
+			break;
+		case ButtonRelease:
+			currentButton = 0;
+            OnMouse(event.xbutton.button, MOUSE_BUTTON_RELEASE, event.xbutton.x, event.xbutton.y);
+			break;
+		case MotionNotify:
+            OnMouse(currentButton, MOUSE_BUTTON_MOVE, event.xmotion.x, event.xmotion.y);
+			break;
+		case ConfigureNotify:
+			windowSize.width = event.xconfigure.width;
+			windowSize.height = event.xconfigure.height;
+            this->resizeFrameBuffer(windowSize.width, windowSize.height);
+			break;
+		case ClientMessage:
+			closed = true;
+			break;
+		default:
+			break;
+		}
+		if(guiSupport)
+			ImGui_ImplX11_EventHandler(event,nullptr);
+	}
 }
 
 void Viewer::run()
 {
-    glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
-    glDepthFunc(GL_LESS);
-    glDisable(GL_DEPTH_TEST);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     mFpsFrame = 0;
-    mTime = window->getTime();
+    mTime = this->getTime();
 
-    while (!window->isClosed()) {
-        
-        window->processEvents();
+    while (!this->isClosed()) {
+
+        //process events
+        this->processEvents();
+
+        glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
+        glDepthFunc(GL_LESS);
+        glDisable(GL_DEPTH_TEST);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         updateAnimationControl();
 
@@ -210,15 +287,33 @@ void Viewer::run()
 
         // eval fps...
         ++mFpsFrame;
-        double elapsed = window->getTime() - mTime;
+        double elapsed = this->getTime() - mTime;
         if (elapsed > 1.0) {
-            mTime = window->getTime();
+            mTime = this->getTime();
             mFps = (int)(double(mFpsFrame) / elapsed);
-            updateWindowTitle();
+            //updateWindowTitle();
             mFpsFrame = 0;
         }
-        window->swapBuffers();
+        this->swapBuffers();
     }
+}
+
+void Viewer::setGUISupport(bool gui){
+	this->guiSupport = gui;
+	// Initialize IMGUI Support
+	if(gui){
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO();
+		ImGui::StyleColorsDark();
+
+		ImGui_ImplOpenGL3_Init();
+		ImGui_ImplX11_Init(this->display, &this->window);
+	}
+}
+
+void Viewer::swapBuffers() {
+	glXSwapBuffers(this->display, this->window);
 }
 
 void Viewer::renderViewOverlay()
@@ -233,7 +328,7 @@ void Viewer::resizeFrameBuffer(int width, int height)
 
 bool Viewer::render(int frame)
 {
-    if (mWindow == nullptr)
+    if (display == nullptr)
         return false;
 
     if (RendererBase::render(frame) == false) {
@@ -243,6 +338,10 @@ bool Viewer::render(int frame)
         mFrameBuffer->render(0, 0, mFrameBuffer->width(), mFrameBuffer->height());
         return true;
     }
+}
+
+bool Viewer::isClosed(void) {
+	return closed;
 }
 
 void Viewer::printHelp(std::ostream& s) const
@@ -327,162 +426,65 @@ bool Viewer::updateCamera()
     }
 
     isChanged |= mCurrentCameraState->update();
-
-    // if (glfwGetKey((GLFWwindow*)mWindow, GLFW_KEY_D) == GLFW_PRESS) {
-    //     // move the light source to the camera direction.
-    //     mParams.mSceneParameters.sunDirection = -mCurrentCameraState->W().normalize();
-    //     isChanged = true;
-    // }
-
     return isChanged;
 }
 
-void Viewer::onKey(int key, int action)
+void Viewer::OnKey(int key)
 {
-#if defined(NANOVDB_USE_IMGUI)
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureKeyboard)
-        return;
-#endif
+    switch(key){
+        
+        case XK_Escape:
+            this->close();
+        break;
+        default:
+        break;
+    }
 
-    if (action == GLFW_PRESS) {
-        if (key == GLFW_KEY_ESCAPE || key == 'Q') {
-            glfwSetWindowShouldClose((GLFWwindow*)mWindow, true);
-        } else if (key == GLFW_KEY_PRINT_SCREEN || (glfwGetKey((GLFWwindow*)mWindow, GLFW_KEY_LEFT_CONTROL) && key == 'P')) {
-            //saveFrameBuffer(getSceneFrame(), getScreenShotFilename(mScreenShotIteration), "png");
-        } else if (key == 'H') {
-            mIsDrawingHelpDialog = !mIsDrawingHelpDialog;
-#if !defined(NANOVDB_USE_IMGUI)
-            printHelp(std::cout);
-#endif
-        } else if (key == 'F') {
-            bool isFramingSceneNode = (glfwGetKey((GLFWwindow*)mWindow, GLFW_KEY_LEFT_CONTROL) > 0);
-            resetCamera(isFramingSceneNode);
-            resetAccumulationBuffer();
-        } else if (key == '`') {
-            mIsDrawingSceneGraph = !mIsDrawingSceneGraph;
-        } else if (key == 'B') {
-            mParams.mSceneParameters.useBackground = (mParams.mSceneParameters.useBackground > 0) ? 0 : 1;
-            resetAccumulationBuffer();
-        } else if (key == 'S') {
-            mParams.mSceneParameters.useShadows = (mParams.mSceneParameters.useShadows > 0) ? 0 : 1;
-            resetAccumulationBuffer();
-        } else if (key == 'G') {
-            mParams.mSceneParameters.useGround = (mParams.mSceneParameters.useGround > 0) ? 0 : 1;
-            resetAccumulationBuffer();
-        } else if (key == 'L') {
-            mParams.mSceneParameters.useLighting = (mParams.mSceneParameters.useLighting > 0) ? 0 : 1;
-            resetAccumulationBuffer();
-        } else if (key == 'P') {
-            mParams.mUseAccumulation = !mParams.mUseAccumulation;
-            resetAccumulationBuffer();
-        } else if (key == GLFW_KEY_COMMA) {
-            if (glfwGetKey((GLFWwindow*)mWindow, GLFW_KEY_LEFT_CONTROL)) {
-                setSceneFrame(mParams.mFrameStart);
-            } else {
-                setSceneFrame(mLastSceneFrame - 1);
-            }
-        } else if (key == GLFW_KEY_PERIOD) {
-            if (glfwGetKey((GLFWwindow*)mWindow, GLFW_KEY_LEFT_CONTROL)) {
-                setSceneFrame(mParams.mFrameEnd);
-            } else {
-                setSceneFrame(mLastSceneFrame + 1);
-            }
-        } else if (key == GLFW_KEY_ENTER) {
-            if (glfwGetKey((GLFWwindow*)mWindow, GLFW_KEY_LEFT_CONTROL)) {
-                setSceneFrame(mParams.mFrameStart);
-                mPlaybackState = PlaybackState::PLAY;
-            } else {
-                if (mPlaybackState == PlaybackState::PLAY) {
-                    mPlaybackState = PlaybackState::STOP;
-                } else {
-                    mPlaybackLastTime = (float)getTime();
-                    mPlaybackState = PlaybackState::PLAY;
-                }
-            }
-        } else if (key == 'T') {
-            mParams.mUseTurntable = !mParams.mUseTurntable;
-            resetAccumulationBuffer();
-        } else if (key == GLFW_KEY_MINUS) {
-            selectSceneNodeByIndex(mSelectedSceneNodeIndex - 1);
-            updateWindowTitle();
-            mFps = 0;
-        } else if (key == GLFW_KEY_EQUAL) {
-            selectSceneNodeByIndex(mSelectedSceneNodeIndex + 1);
-            updateWindowTitle();
-            mFps = 0;
-        } else if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
-            setRenderPlatform((key - GLFW_KEY_1));
-            updateWindowTitle();
-            mFps = 0;
-        }
+    if(key >= XK_1 && key <= XK_9){
+        setRenderPlatform(key - XK_1);
+        mFps = 0;
     }
 }
 
-void Viewer::onMouseButton(int button, int action)
+void Viewer::OnMouse(int button, int action, int x, int y)
 {
-#if defined(NANOVDB_USE_IMGUI)
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse)
-        return;
-#endif
-
-    if (button == GLFW_MOUSE_BUTTON_LEFT) {
-        if (action == GLFW_PRESS) {
+    const float zoomSpeed = mCurrentCameraState->mCameraDistance * 0.1f;
+    static int pos = mWheelPos;
+    if (button == Button1) {
+        if (action == MOUSE_BUTTON_PRESS) {
             mMouseDown = true;
             mIsFirstMouseMove = true;
         }
-    } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
-        if (action == GLFW_PRESS) {
+    } else if (button == Button2) {
+        if (action == MOUSE_BUTTON_PRESS) {
             mMouseDown = true;
             mIsMouseRightDown = true;
             mIsFirstMouseMove = true;
         }
+    }else if(button == Button4){
+        if (action == MOUSE_BUTTON_PRESS) {
+            pos += 1;            
+        }
+    }else if(button == Button5){
+        if (action == MOUSE_BUTTON_PRESS) {
+            pos -= 1;
+        }
     }
 
-    if (action == GLFW_RELEASE) {
+    if (action == MOUSE_BUTTON_RELEASE) {
         mMouseDown = false;
         mIsMouseRightDown = false;
     }
 
     mCurrentCameraState->mIsViewChanged = true;
-
     if (mMouseDown) {
-        if (glfwGetKey((GLFWwindow*)mWindow, GLFW_KEY_TAB) == GLFW_PRESS) {
-            double xpos, ypos;
-            glfwGetCursorPos((GLFWwindow*)mWindow, &xpos, &ypos);
-            int x = int(xpos);
-            //int y = int(ypos);
-            mPendingSceneFrame = mParams.mFrameStart + (int)((float(x) / mWindowWidth) * (mParams.mFrameEnd - mParams.mFrameStart + 1));
+            mPendingSceneFrame = mParams.mFrameStart + (int)((float(x) / windowSize.width) * (mParams.mFrameEnd - mParams.mFrameStart + 1));
             if (mPendingSceneFrame > mParams.mFrameEnd)
                 mPendingSceneFrame = mParams.mFrameEnd;
             else if (mPendingSceneFrame < mParams.mFrameStart)
                 mPendingSceneFrame = mParams.mFrameStart;
             mPlaybackState = PlaybackState::STOP;
             mCurrentCameraState->mIsViewChanged = true;
-        }
-    }
-}
-
-void Viewer::onMouseMove(int x, int y)
-{
-#if defined(NANOVDB_USE_IMGUI)
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse)
-        return;
-#endif
-
-    if (mMouseDown) {
-        if (glfwGetKey((GLFWwindow*)mWindow, GLFW_KEY_TAB) == GLFW_PRESS) {
-            mPendingSceneFrame = mParams.mFrameStart + (int)((float(x) / mWindowWidth) * (mParams.mFrameEnd - mParams.mFrameStart + 1));
-            if (mPendingSceneFrame > mParams.mFrameEnd)
-                mPendingSceneFrame = mParams.mFrameEnd;
-            else if (mPendingSceneFrame < mParams.mFrameStart)
-                mPendingSceneFrame = mParams.mFrameStart;
-            mPlaybackState = PlaybackState::STOP;
-            mCurrentCameraState->mIsViewChanged = true;
-            return;
-        }
     }
 
     const float orbitSpeed = 0.01f;
@@ -499,13 +501,11 @@ void Viewer::onMouseMove(int x, int y)
 
     if (mMouseDown) {
         if (!mIsMouseRightDown) {
-            // orbit...
             mCurrentCameraState->mCameraRotation[1] -= dx * orbitSpeed;
             mCurrentCameraState->mCameraRotation[0] += dy * orbitSpeed;
 
             mCurrentCameraState->mIsViewChanged = true;
         } else {
-            // strafe...
             mCurrentCameraState->mCameraLookAt = mCurrentCameraState->mCameraLookAt + (dy * mCurrentCameraState->V() + dx * mCurrentCameraState->U()) * strafeSpeed;
 
             mCurrentCameraState->mIsViewChanged = true;
@@ -515,25 +515,12 @@ void Viewer::onMouseMove(int x, int y)
     mMouseX = float(x);
     mMouseY = float(y);
 
-    //printf("mouse(%f, %f)\n", mMouseX, mMouseY);
-}
-
-void Viewer::onMouseWheel(int pos)
-{
-#if defined(NANOVDB_USE_IMGUI)
-    ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse)
-        return;
-#endif
-
-    const float zoomSpeed = mCurrentCameraState->mCameraDistance * 0.1f;
-    pos += mWheelPos;
-
     int speed = abs(mWheelPos - pos);
 
-    if (mWheelPos >= pos) {
+    if(mWheelPos >= pos){
         mCurrentCameraState->mCameraDistance += float(speed) * zoomSpeed;
-    } else {
+    }
+    else{
         mCurrentCameraState->mCameraDistance -= float(speed) * zoomSpeed;
         mCurrentCameraState->mCameraDistance = std::max(0.001f, mCurrentCameraState->mCameraDistance);
     }
@@ -541,14 +528,6 @@ void Viewer::onMouseWheel(int pos)
     mWheelPos = pos;
     mCurrentCameraState->mIsViewChanged = true;
     mIsFirstMouseMove = false;
-}
-
-void Viewer::onResize(int width, int height)
-{
-    mWindowWidth = width;
-    mWindowHeight = height;
-
-    resizeFrameBuffer(width, height);
 }
 
 #if defined(NANOVDB_USE_IMGUI)
@@ -611,122 +590,123 @@ void Viewer::drawRenderOptionsDialog()
 
     ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
     if (ImGui::BeginTabBar("Render-options", tab_bar_flags)) {
-        if (ImGui::BeginTabItem("Common")) {
+        if (ImGui::BeginTabItem("Common")) 
+        {
             drawRenderPlatformWidget("Platform");
             ImGui::SameLine();
             HelpMarker("The rendering platform.");
 
             ImGui::Separator();
 
-            if (ImGui::CollapsingHeader("Output", ImGuiTreeNodeFlags_DefaultOpen)) {
-                StringMap smap;
+            // if (ImGui::CollapsingHeader("Output", ImGuiTreeNodeFlags_DefaultOpen)) {
+            //     StringMap smap;
 
-                static std::vector<std::string> sFileFormats{"auto", "png", "jpg", "tga", "hdr", "pfm"};
-                smap["format"] = (mParams.mOutputExtension.empty()) ? "auto" : mParams.mOutputExtension;
-                int fileFormat = smap.getEnum("format", sFileFormats, fileFormat);
-                if (ImGui::Combo(
-                        "File Format", (int*)&fileFormat, [](void* data, int i, const char** outText) {
-                            auto& v = *static_cast<std::vector<std::string>*>(data);
-                            if (i < 0 || i >= static_cast<int>(v.size())) {
-                                return false;
-                            }
-                            *outText = v[i].c_str();
-                            return true;
-                        },
-                        static_cast<void*>(&sFileFormats),
-                        (int)sFileFormats.size())) {
-                    mParams.mOutputExtension = sFileFormats[fileFormat];
-                    if (mParams.mOutputExtension == "auto")
-                        mParams.mOutputExtension = "";
-                    isChanged |= true;
-                }
-                ImGui::SameLine();
-                HelpMarker("The output file-format. Use \"auto\" to decide based on the file path extension.");
+            //     static std::vector<std::string> sFileFormats{"auto", "png", "jpg", "tga", "hdr", "pfm"};
+            //     smap["format"] = (mParams.mOutputExtension.empty()) ? "auto" : mParams.mOutputExtension;
+            //     int fileFormat = smap.getEnum("format", sFileFormats, fileFormat);
+            //     if (ImGui::Combo(
+            //             "File Format", (int*)&fileFormat, [](void* data, int i, const char** outText) {
+            //                 auto& v = *static_cast<std::vector<std::string>*>(data);
+            //                 if (i < 0 || i >= static_cast<int>(v.size())) {
+            //                     return false;
+            //                 }
+            //                 *outText = v[i].c_str();
+            //                 return true;
+            //             },
+            //             static_cast<void*>(&sFileFormats),
+            //             (int)sFileFormats.size())) {
+            //         mParams.mOutputExtension = sFileFormats[fileFormat];
+            //         if (mParams.mOutputExtension == "auto")
+            //             mParams.mOutputExtension = "";
+            //         isChanged |= true;
+            //     }
+            //     ImGui::SameLine();
+            //     HelpMarker("The output file-format. Use \"auto\" to decide based on the file path extension.");
 
-                static char outputStr[512] = "";
-                if (ImGui::InputTextWithHint("File Path", mParams.mOutputFilePath.c_str(), outputStr, IM_ARRAYSIZE(outputStr))) {
-                    mParams.mOutputFilePath.assign(outputStr);
-                }
+            //     static char outputStr[512] = "";
+            //     if (ImGui::InputTextWithHint("File Path", mParams.mOutputFilePath.c_str(), outputStr, IM_ARRAYSIZE(outputStr))) {
+            //         mParams.mOutputFilePath.assign(outputStr);
+            //     }
 
-                ImGui::SameLine();
-                HelpMarker("The file path for the output file. C-style printf formatting can be used for the frame integer. e.g. \"./images/output.%04d.png\"");
-            }
+            //     ImGui::SameLine();
+            //     HelpMarker("The file path for the output file. C-style printf formatting can be used for the frame integer. e.g. \"./images/output.%04d.png\"");
+            // }
 
-            if (ImGui::CollapsingHeader("Animation", ImGuiTreeNodeFlags_DefaultOpen)) {
-                isChanged |= ImGui::InputInt("Frame start", &mParams.mFrameStart, 1);
-                ImGui::SameLine();
-                HelpMarker("The frame to start rendering from.");
-                isChanged |= ImGui::InputInt("Frame end", &mParams.mFrameEnd, 1);
-                ImGui::SameLine();
-                HelpMarker("The inclusive frame to end rendering.");
-                isChanged |= ImGui::DragFloat("Frame Rate (frames per second)", &mPlaybackRate, 0.1f, 0.1f, 120.0f, "%.1f");
-                ImGui::SameLine();
-                HelpMarker("The frame-rate for playblasting in real-time.");
-            }
+            // if (ImGui::CollapsingHeader("Animation", ImGuiTreeNodeFlags_DefaultOpen)) {
+            //     isChanged |= ImGui::InputInt("Frame start", &mParams.mFrameStart, 1);
+            //     ImGui::SameLine();
+            //     HelpMarker("The frame to start rendering from.");
+            //     isChanged |= ImGui::InputInt("Frame end", &mParams.mFrameEnd, 1);
+            //     ImGui::SameLine();
+            //     HelpMarker("The inclusive frame to end rendering.");
+            //     isChanged |= ImGui::DragFloat("Frame Rate (frames per second)", &mPlaybackRate, 0.1f, 0.1f, 120.0f, "%.1f");
+            //     ImGui::SameLine();
+            //     HelpMarker("The frame-rate for playblasting in real-time.");
+            // }
 
-            if (ImGui::CollapsingHeader("Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
-                isChanged |= ImGui::Checkbox("Use Lighting", (bool*)&mParams.mSceneParameters.useLighting);
-                ImGui::SameLine();
-                HelpMarker("Render with a key light.");
-                isChanged |= ImGui::Checkbox("Use Shadows", (bool*)&mParams.mSceneParameters.useShadows);
-                ImGui::SameLine();
-                HelpMarker("Render key light shadows.");
-            }
+            // if (ImGui::CollapsingHeader("Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
+            //     isChanged |= ImGui::Checkbox("Use Lighting", (bool*)&mParams.mSceneParameters.useLighting);
+            //     ImGui::SameLine();
+            //     HelpMarker("Render with a key light.");
+            //     isChanged |= ImGui::Checkbox("Use Shadows", (bool*)&mParams.mSceneParameters.useShadows);
+            //     ImGui::SameLine();
+            //     HelpMarker("Render key light shadows.");
+            // }
 
-            if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-                isChanged |= ImGui::Combo("Lens", (int*)&mParams.mSceneParameters.camera.lensType(), kCameraLensTypeStrings, (int)Camera::LensType::kNumTypes);
-                ImGui::SameLine();
-                HelpMarker("The camera lens type.");
-                if (mParams.mSceneParameters.camera.lensType() == Camera::LensType::kODS) {
-                    isChanged |= ImGui::DragFloat("IPD", &mParams.mSceneParameters.camera.ipd(), 0.1f, 0.f, 50.f, "%.2f");
-                    ImGui::SameLine();
-                    HelpMarker("The eye separation distance.");
-                }
-                if (mParams.mSceneParameters.camera.lensType() == Camera::LensType::kPinHole) {
-                    isChanged |= ImGui::DragFloat("Field of View", &mCurrentCameraState->mFovY, 1.0f, 1, 120, "%.0f");
-                    ImGui::SameLine();
-                    HelpMarker("The vertical field of view in degrees.");
-                }
+            // if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+            //     isChanged |= ImGui::Combo("Lens", (int*)&mParams.mSceneParameters.camera.lensType(), kCameraLensTypeStrings, (int)Camera::LensType::kNumTypes);
+            //     ImGui::SameLine();
+            //     HelpMarker("The camera lens type.");
+            //     if (mParams.mSceneParameters.camera.lensType() == Camera::LensType::kODS) {
+            //         isChanged |= ImGui::DragFloat("IPD", &mParams.mSceneParameters.camera.ipd(), 0.1f, 0.f, 50.f, "%.2f");
+            //         ImGui::SameLine();
+            //         HelpMarker("The eye separation distance.");
+            //     }
+            //     if (mParams.mSceneParameters.camera.lensType() == Camera::LensType::kPinHole) {
+            //         isChanged |= ImGui::DragFloat("Field of View", &mCurrentCameraState->mFovY, 1.0f, 1, 120, "%.0f");
+            //         ImGui::SameLine();
+            //         HelpMarker("The vertical field of view in degrees.");
+            //     }
 
-                isChanged |= ImGui::DragInt("Samples", &mParams.mSceneParameters.samplesPerPixel, 0.1f, 1, 32);
-                ImGui::SameLine();
-                HelpMarker("The number of camera samples per ray.");
-                isChanged |= ImGui::Checkbox("Render Environment", (bool*)&mParams.mSceneParameters.useBackground);
-                ImGui::SameLine();
-                HelpMarker("Render the background environment.");
-                isChanged |= ImGui::Checkbox("Render Ground-plane", (bool*)&mParams.mSceneParameters.useGround);
-                ImGui::SameLine();
-                HelpMarker("Render the ground plane.");
-                isChanged |= ImGui::Checkbox("Render Ground-reflections", (bool*)&mParams.mSceneParameters.useGroundReflections);
-                ImGui::SameLine();
-                HelpMarker("Render ground reflections (work in progress).");
-                isChanged |= ImGui::Checkbox("Turntable Camera", &mParams.mUseTurntable);
-                ImGui::SameLine();
-                HelpMarker("Spin the camera around the pivot each frame step.");
-                isChanged |= ImGui::DragFloat("Turntable Inverse Rate", &mParams.mTurntableRate, 0.1f, 1.0f, 100.0f, "%.1f");
-                ImGui::SameLine();
-                HelpMarker("The number of frame-sequences per revolution.");
-            }
+            //     isChanged |= ImGui::DragInt("Samples", &mParams.mSceneParameters.samplesPerPixel, 0.1f, 1, 32);
+            //     ImGui::SameLine();
+            //     HelpMarker("The number of camera samples per ray.");
+            //     isChanged |= ImGui::Checkbox("Render Environment", (bool*)&mParams.mSceneParameters.useBackground);
+            //     ImGui::SameLine();
+            //     HelpMarker("Render the background environment.");
+            //     isChanged |= ImGui::Checkbox("Render Ground-plane", (bool*)&mParams.mSceneParameters.useGround);
+            //     ImGui::SameLine();
+            //     HelpMarker("Render the ground plane.");
+            //     isChanged |= ImGui::Checkbox("Render Ground-reflections", (bool*)&mParams.mSceneParameters.useGroundReflections);
+            //     ImGui::SameLine();
+            //     HelpMarker("Render ground reflections (work in progress).");
+            //     isChanged |= ImGui::Checkbox("Turntable Camera", &mParams.mUseTurntable);
+            //     ImGui::SameLine();
+            //     HelpMarker("Spin the camera around the pivot each frame step.");
+            //     isChanged |= ImGui::DragFloat("Turntable Inverse Rate", &mParams.mTurntableRate, 0.1f, 1.0f, 100.0f, "%.1f");
+            //     ImGui::SameLine();
+            //     HelpMarker("The number of frame-sequences per revolution.");
+            // }
 
-            if (ImGui::CollapsingHeader("Tonemapping", ImGuiTreeNodeFlags_DefaultOpen)) {
-                isChanged |= ImGui::Checkbox("Use Tonemapping", (bool*)&mParams.mSceneParameters.useTonemapping);
-                ImGui::SameLine();
-                HelpMarker("Use simple Reinhard tonemapping.");
-                isChanged |= ImGui::DragFloat("WhitePoint", &mParams.mSceneParameters.tonemapWhitePoint, 0.01f, 1.0f, 20.0f);
-                ImGui::SameLine();
-                HelpMarker("The Reinhard tonemapping whitepoint.");
-            }
+            // if (ImGui::CollapsingHeader("Tonemapping", ImGuiTreeNodeFlags_DefaultOpen)) {
+            //     isChanged |= ImGui::Checkbox("Use Tonemapping", (bool*)&mParams.mSceneParameters.useTonemapping);
+            //     ImGui::SameLine();
+            //     HelpMarker("Use simple Reinhard tonemapping.");
+            //     isChanged |= ImGui::DragFloat("WhitePoint", &mParams.mSceneParameters.tonemapWhitePoint, 0.01f, 1.0f, 20.0f);
+            //     ImGui::SameLine();
+            //     HelpMarker("The Reinhard tonemapping whitepoint.");
+            // }
 
-            ImGui::Separator();
+            // ImGui::Separator();
 
-            isChanged |= ImGui::Checkbox("Progressive", &mParams.mUseAccumulation);
-            ImGui::SameLine();
-            HelpMarker("do a progressive accumulation of the frame.");
-            isChanged |= ImGui::DragInt("Max Progressive Iterations", &mParams.mMaxProgressiveSamples, 1.f, 1, 256);
-            ImGui::SameLine();
-            HelpMarker("The maximum progressive iterations (used in batch rendering).");
+            // isChanged |= ImGui::Checkbox("Progressive", &mParams.mUseAccumulation);
+            // ImGui::SameLine();
+            // HelpMarker("do a progressive accumulation of the frame.");
+            // isChanged |= ImGui::DragInt("Max Progressive Iterations", &mParams.mMaxProgressiveSamples, 1.f, 1, 256);
+            // ImGui::SameLine();
+            // HelpMarker("The maximum progressive iterations (used in batch rendering).");
 
-            ImGui::Separator();
+            // ImGui::Separator();
 
             ImGui::EndTabItem();
         }
@@ -738,6 +718,7 @@ void Viewer::drawRenderOptionsDialog()
         resetAccumulationBuffer();
 
     ImGui::End();
+#endif
 }
 
 void Viewer::drawAboutDialog()
@@ -758,7 +739,7 @@ void Viewer::drawAboutDialog()
         return;
     }
 
-    ImGui::Text("NanoVDB Viewer\n");
+    ImGui::Text("Viewer\n");
 
     ImGui::Separator();
 
@@ -777,9 +758,7 @@ void Viewer::drawAboutDialog()
 #ifdef NANOVDB_USE_TBB
         ImGui::BulletText("Intel TBB");
 #endif
-#ifdef NANOVDB_USE_CUDA
         ImGui::BulletText("NVIDIA CUDA");
-#endif
 #ifdef NANOVDB_USE_OPENCL
         ImGui::BulletText("OpenCL");
 #endif
@@ -1258,7 +1237,7 @@ void Viewer::drawSceneGraphNodes()
         ImGui::OpenPopup("Create New Node");
     }
 
-    ImGui::SetNextWindowPos(ImGui::GetWindowViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     if (ImGui::BeginPopupModal("Create New Node", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         static char nameBuf[256] = {0};
 
@@ -1476,11 +1455,6 @@ void Viewer::drawRenderStatsOverlay()
 
 #if defined(NANOVDB_USE_IMGUI)
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_AlwaysAutoResize;
-#if defined(NANOVDB_USE_IMGUI_DOCKING)
-    auto viewPos = ImGui::GetMainViewport()->Pos;
-    auto viewSize = ImGui::GetMainViewport()->Size;
-#else
-    
     auto viewPos = ImGui::GetWindowPos();
     auto viewSize = ImGui::GetWindowSize();
 #endif
@@ -1499,9 +1473,6 @@ void Viewer::drawRenderStatsOverlay()
         ImGui::Text("FPS: %d (%s)", mFps, mRenderLauncher.name().c_str());
     }
     ImGui::End();
-#else
-    return;
-#endif
 }
 
 std::string Viewer::getScreenShotFilename(int iteration) const
@@ -1517,52 +1488,9 @@ void Viewer::drawMenuBar()
     bool openLoadURL = false;
 
     if (ImGui::BeginMainMenuBar()) {
-        if (ImGui::BeginMenu("File")) {
-#if defined(NANOVDB_USE_NFD)
-            if (ImGui::MenuItem("Load from file...", nullptr)) {
-                std::string filePath;
-                if (openFileDialog(filePath)) {
-                    try {
-                        int sceneNodeIndex = addGridAssetsAndNodes("default", {filePath});
-                        selectSceneNodeByIndex(sceneNodeIndex);
-                    }
-                    catch (const std::exception& e) {
-                        std::cerr << "An exception occurred: \"" << e.what() << "\"" << std::endl;
-                    }
-                }
-            }
-#else
-            ImGui::MenuItem("Load from file...", "(Please build with NFD support)", false, false);
-#endif
-            if (ImGui::MenuItem("Load from URL...")) {
-                openLoadURL = true;
-            }
-
-            ImGui::Separator();
-
-#if defined(NANOVDB_USE_NFD)
-            if (ImGui::MenuItem("Save to file...", nullptr)) {
-                std::string filePath;
-                if (openSaveDialog(filePath)) {
-                    try {
-                        std::cout << filePath << "\n";
-                    }
-                    catch (const std::exception& e) {
-                        std::cerr << "An exception occurred: \"" << e.what() << "\"" << std::endl;
-                    }
-                }
-            }
-#else
-            ImGui::MenuItem("Save to file...", "(Please build with NFD support)", false, false);
-#endif
-            ImGui::Separator();
-            if (ImGui::MenuItem("Quit", "Q")) {
-                glfwSetWindowShouldClose((GLFWwindow*)mWindow, 1);
-            }
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("View")) {
+        
+        if (ImGui::BeginMenu("View")) 
+        {
             if (ImGui::MenuItem("Show Log", NULL, mIsDrawingEventLog, true)) {
                 mIsDrawingEventLog = !mIsDrawingEventLog;
             }
@@ -1575,11 +1503,11 @@ void Viewer::drawMenuBar()
             if (ImGui::MenuItem("Show Render Stats", NULL, mIsDrawingRenderStats, true)) {
                 mIsDrawingRenderStats = !mIsDrawingRenderStats;
             }
-
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Scene")) {
+        if (ImGui::BeginMenu("Scene")) 
+        {
             if (ImGui::MenuItem("Add Empty Node")) {
                 auto nodeId = addSceneNode();
                 selectSceneNodeByIndex(findNode(nodeId)->mIndex);
@@ -1587,19 +1515,10 @@ void Viewer::drawMenuBar()
 
             if (ImGui::BeginMenu("Add Primitive Node")) {
                 static StringMap urls;
-                urls["ls_sphere"] = "internal://#ls_sphere_100";
-                urls["ls_torus"] = "internal://#ls_torus_100";
-                urls["ls_box"] = "internal://#ls_box_100";
-                urls["ls_octahedron"] = "internal://#ls_octahedron_100";
-                urls["ls_bbox"] = "internal://#ls_bbox_100";
                 urls["fog_sphere"] = "internal://#fog_sphere_100";
                 urls["fog_torus"] = "internal://#fog_torus_100";
                 urls["fog_box"] = "internal://#fog_box_100";
                 urls["fog_octahedron"] = "internal://#fog_octahedron_100";
-                urls["points_sphere"] = "internal://#points_sphere_100";
-                urls["points_torus"] = "internal://#points_torus_100";
-                urls["points_box"] = "internal://#points_box_100";
-                urls["fog_mandelbulb"] = "internal://#fog_mandelbulb_100";
 
                 for (auto& it : urls) {
                     if (ImGui::MenuItem(it.first.c_str())) {
@@ -1629,88 +1548,24 @@ void Viewer::drawMenuBar()
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Render")) {
-            {
-                bool areAttachmentsReady = true;
-                if (mSelectedSceneNodeIndex >= 0) {
-                    areAttachmentsReady = updateNodeAttachmentRequests(mSceneNodes[mSelectedSceneNodeIndex], true, mIsDumpingLog);
-                }
-
-                auto screenShotFilename = getScreenShotFilename(mScreenShotIteration);
-
-                if (ImGui::MenuItem("Save Screenshot", screenShotFilename.c_str(), false, areAttachmentsReady)) {
-                    //saveFrameBuffer(getSceneFrame(), screenShotFilename, "png");
-                }
-            }
-
-            ImGui::Separator();
-
+        if (ImGui::BeginMenu("Render")) 
+        {
             if (ImGui::MenuItem("Options...")) {
                 mIsDrawingRenderOptions = true;
             }
-
-            ImGui::Separator();
-
-            if (mParams.mOutputFilePath.empty()) {
-                ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
-                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
-            }
-
-            if (ImGui::Button("Batch Render")) {
-                renderSequence();
-            }
-
-            if (mParams.mOutputFilePath.empty()) {
-                ImGui::PopItemFlag();
-                ImGui::PopStyleVar();
-            }
-
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Help")) {
-            if (ImGui::MenuItem("View Help"))
-                mIsDrawingHelpDialog = true;
-            ImGui::Separator();
-            if (ImGui::MenuItem("About"))
-                mIsDrawingAboutDialog = true;
-            ImGui::EndMenu();
-        }
+        // if (ImGui::BeginMenu("Help")) {
+        //     if (ImGui::MenuItem("View Help"))
+        //         mIsDrawingHelpDialog = true;
+        //     ImGui::Separator();
+        //     if (ImGui::MenuItem("About"))
+        //         mIsDrawingAboutDialog = true;
+        //     ImGui::EndMenu();
+        // }
 
         ImGui::EndMainMenuBar();
-    }
-
-    if (openLoadURL)
-        ImGui::OpenPopup("Load URL");
-
-#if defined(NANOVDB_USE_IMGUI_DOCKING)
-    auto viewPos = ImGui::GetMainViewport()->Pos;
-    auto viewSize = ImGui::GetMainViewport()->Size;
-#else
-    auto viewPos = ImGui::GetWindowPos();
-    auto viewSize = ImGui::GetWindowSize();
-#endif
-    ImVec2 center = ImVec2(viewPos.x + viewSize.x / 2, viewPos.y + viewSize.y / 2);
-
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("Load URL", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-        static char urlBuf[1024] = {0};
-        static char nameBuf[256] = {0};
-
-        ImGui::InputText("Node Name", nameBuf, 1024);
-        ImGui::InputText("Asset URL", urlBuf, 1024);
-
-        ImGui::Separator();
-        if (ImGui::Button("Load")) {
-            auto nodeId = addSceneNode(std::string(nameBuf));
-            setSceneNodeGridAttachment(nodeId, 0, urlBuf);
-            addGridAsset(urlBuf);
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel"))
-            ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
     }
 #else
     return;

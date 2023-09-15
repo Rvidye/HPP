@@ -1,11 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file RenderVoxelUtils.h
-	\brief General C++ implementation of the Voxel rendering code.
-*/
-
 #pragma once
 
 #include <nanovdb/NanoVDB.h>

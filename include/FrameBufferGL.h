@@ -1,15 +1,8 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file FrameBufferGL.h
-	\brief Declaration of OpenGL framebuffer class.
-*/
-
 #pragma once
 
 #include <string>
 #include <vector>
+#include<GL/glew.h>
 #include "FrameBuffer.h"
 
 bool checkGL(const char* file, const int line);

@@ -1,10 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file RenderLevelSetUtils.h
-	\brief General C++ implementation of the LevelSet rendering code.
-*/
 
 #pragma once
 

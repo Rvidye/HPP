@@ -1,11 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file CallbackPool.h
-	\brief Class to handle a pool of threads.
-*/
-
 #include <thread>
 #include <mutex>
 #include <condition_variable>

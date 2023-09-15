@@ -1,28 +1,13 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
 
-/*!
-	\file RenderLauncherCUDA.cpp
-	\brief Implementation of CUDA-platform Grid renderer.
-*/
-#define NANOVDB_USE_CUDA
-#define NANOVDB_USE_OPENGL
-#ifdef NANOVDB_USE_CUDA
+#include "RenderLauncherImpl.h"
+#include "RenderFogVolumeUtils.h"
+#include "RenderLevelSetUtils.h"
+#include "RenderGridUtils.h"
+#include "RenderPointsUtils.h"
+#include "FrameBufferHost.h"
+#include "FrameBufferGL.h"
 
-#include "../include/RenderLauncherImpl.h"
-#include "../include/RenderFogVolumeUtils.h"
-#include "../include/RenderLevelSetUtils.h"
-#include "../include/RenderGridUtils.h"
-#include "../include/RenderPointsUtils.h"
-#include "../include/FrameBufferHost.h"
-#if defined(NANOVDB_USE_OPENGL)
-#include "../include/FrameBufferGL.h"
-#endif
-
-#if defined(__CUDACC__)
-#if defined(NANOVDB_USE_OPENGL)
 #include <cuda_gl_interop.h>
-#endif
 #include <cuda_runtime_api.h>
 #include <iostream>
 
@@ -139,7 +124,6 @@ std::shared_ptr<RenderLauncherCUDA::GridResource> RenderLauncherCUDA::ensureGrid
 
 void RenderLauncherCUDA::unmapCUDA(const std::shared_ptr<ImageResource>& resource, FrameBufferBase* imgBuffer, void* stream)
 {
-#if defined(NANOVDB_USE_OPENGL)
     auto imgBufferGL = dynamic_cast<FrameBufferGL*>(imgBuffer);
     if (imgBufferGL) {
         if (resource->mGlTextureResourceCUDA) {
@@ -149,7 +133,6 @@ void RenderLauncherCUDA::unmapCUDA(const std::shared_ptr<ImageResource>& resourc
         }
         return;
     }
-#endif
 
     imgBuffer->cudaUnmap(stream);
     imgBuffer->invalidate();
@@ -161,7 +144,6 @@ void* RenderLauncherCUDA::mapCUDA(int access, const std::shared_ptr<ImageResourc
         return nullptr;
     }
 
-#if defined(NANOVDB_USE_OPENGL)
     auto imgBufferGL = dynamic_cast<FrameBufferGL*>(imgBuffer);
     if (imgBufferGL) {
         if (resource->mGlTextureResourceCUDAError)
@@ -233,7 +215,6 @@ void* RenderLauncherCUDA::mapCUDA(int access, const std::shared_ptr<ImageResourc
         NANOVDB_GL_SAFE_CALL(glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0));
         return ptr;
     }
-#endif
     return imgBuffer->cudaMap(FrameBufferBase::AccessType(access));
 }
 
@@ -268,6 +249,3 @@ bool RenderLauncherCUDA::render(MaterialClass method, int width, int height, Fra
 
     return true;
 }
-
-#endif
-#endif // NANOVDB_USE_CUDA

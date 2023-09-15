@@ -1,10 +1,3 @@
-// Copyright Contributors to the OpenVDB Project
-// SPDX-License-Identifier: MPL-2.0
-
-/*!
-	\file RenderLauncherImpl.h
-	\brief Declaration of Grid Renderer implementations.
-*/
 
 #pragma once
 #include <nanovdb/util/Ray.h>
@@ -378,7 +371,6 @@ public:
     int getPriority() const override { return 10; }
 };
 
-#if defined(NANOVDB_USE_CUDA)
 class RenderLauncherCUDA : public RenderLauncherImplBase
 {
 public:
@@ -417,44 +409,6 @@ public:
     std::shared_ptr<ImageResource>                       mImageResource;
     std::map<const void*, std::shared_ptr<GridResource>> mGridResources;
 };
-#endif
-
-#if defined(NANOVDB_USE_OPTIX) && defined(NANOVDB_USE_CUDA)
-class RenderLauncherOptix : public RenderLauncherImplBase
-{
-public:
-    using RenderLauncherImplBase::render;
-
-    bool render(MaterialClass method, int width, int height, FrameBufferBase* imgBuffer, int numAccumulations, int numGrids, const GridRenderParameters* grids, const SceneRenderParameters& sceneParams, const MaterialParameters& materialParams, RenderStatistics* stats) override;
-
-    std::string name() const override { return "optix"; }
-
-    int getPriority() const override { return 19; }
-
-    ~RenderLauncherOptix() override;
-
-private:
-    struct Resource
-    {
-        ~Resource();
-
-        bool          mInitialized = false;
-        void*         mDeviceGrid = nullptr;
-        int*          mDeviceEnumeration = nullptr;
-        void*         mGlTextureResourceCUDA = nullptr;
-        size_t        mGlTextureResourceSize = 0;
-        int           mGlTextureResourceId = 0;
-        void*         mOptixRenderState = nullptr;
-        MaterialClass mMaterialClass = MaterialClass::kAuto;
-    };
-
-    std::shared_ptr<Resource> ensureResource(const nanovdb::GridHandle<>& gridHdl, MaterialClass renderMethod);
-    void*                     mapCUDA(int access, const std::shared_ptr<Resource>& resource, FrameBufferBase* imgBuffer, void* stream = 0);
-    void                      unmapCUDA(const std::shared_ptr<Resource>& resource, FrameBufferBase* imgBuffer, void* stream = 0);
-
-    std::map<const nanovdb::GridHandle<>*, std::shared_ptr<Resource>> mResources;
-};
-#endif
 
 #if defined(NANOVDB_USE_OPENCL)
 class RenderLauncherCL : public RenderLauncherImplBase
@@ -499,7 +453,6 @@ private:
 };
 #endif
 
-#if defined(NANOVDB_USE_OPENGL)
 class RenderLauncherGL : public RenderLauncherImplBase
 {
 public:
@@ -531,7 +484,6 @@ private:
 
     std::map<const nanovdb::GridHandle<>*, std::shared_ptr<Resource>> mResources;
 };
-#endif
 
 class RenderLauncherC99 : public RenderLauncherImplBase
 {
