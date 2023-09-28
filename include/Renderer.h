@@ -55,8 +55,8 @@ struct RendererParams
 {
     RendererParams();
 
-    int                   mWidth = 512;
-    int                   mHeight = 512;
+    int                   mWidth = 1980;
+    int                   mHeight = 1080;
     std::string           mOutputFilePath;
     std::string           mOutputExtension;
     int                   mOutputPadding = 4;

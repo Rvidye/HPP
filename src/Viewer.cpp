@@ -279,6 +279,8 @@ void Viewer::run()
         drawEventLog();
         drawAssets();
         drawPendingGlyph();
+        drawIntroDialog();
+        drawReferanceDialog();
 
         ImGui::Render();
 
@@ -424,7 +426,6 @@ bool Viewer::updateCamera()
         mCurrentCameraState->mIsViewChanged = true;
     } else {
     }
-
     isChanged |= mCurrentCameraState->update();
     return isChanged;
 }
@@ -447,7 +448,10 @@ void Viewer::OnKey(int key)
 }
 
 void Viewer::OnMouse(int button, int action, int x, int y)
-{
+{ 
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse)
+        return;
     const float zoomSpeed = mCurrentCameraState->mCameraDistance * 0.1f;
     static int pos = mWheelPos;
     if (button == Button1) {
@@ -586,16 +590,13 @@ void Viewer::drawRenderOptionsDialog()
     if (!mIsDrawingRenderOptions)
         return;
 
-    ImGui::Begin("Render Options", &mIsDrawingRenderOptions, ImGuiWindowFlags_NoSavedSettings);
+    ImGui::Begin("Render Options", &mIsDrawingRenderOptions);
 
     ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
     if (ImGui::BeginTabBar("Render-options", tab_bar_flags)) {
         if (ImGui::BeginTabItem("Common")) 
         {
             drawRenderPlatformWidget("Platform");
-            ImGui::SameLine();
-            HelpMarker("The rendering platform.");
-
             ImGui::Separator();
 
             // if (ImGui::CollapsingHeader("Output", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -643,15 +644,20 @@ void Viewer::drawRenderOptionsDialog()
             //     ImGui::SameLine();
             //     HelpMarker("The frame-rate for playblasting in real-time.");
             // }
-
-            // if (ImGui::CollapsingHeader("Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
-            //     isChanged |= ImGui::Checkbox("Use Lighting", (bool*)&mParams.mSceneParameters.useLighting);
-            //     ImGui::SameLine();
-            //     HelpMarker("Render with a key light.");
-            //     isChanged |= ImGui::Checkbox("Use Shadows", (bool*)&mParams.mSceneParameters.useShadows);
-            //     ImGui::SameLine();
-            //     HelpMarker("Render key light shadows.");
-            // }
+            if (ImGui::CollapsingHeader("Lighting")) {
+                isChanged |= ImGui::Checkbox("Use Lighting", (bool*)&mParams.mSceneParameters.useLighting);
+                ImGui::SameLine();
+                HelpMarker("Render with a key light.");
+                isChanged |= ImGui::Checkbox("Use Shadows", (bool*)&mParams.mSceneParameters.useShadows);
+                ImGui::SameLine();
+                HelpMarker("Render key light shadows.");
+                isChanged |= ImGui::Checkbox("Background", (bool*)&mParams.mSceneParameters.useBackground);
+                ImGui::SameLine();
+                HelpMarker("Render Background.");
+                isChanged |= ImGui::Checkbox("Ground", (bool*)&mParams.mSceneParameters.useGround);
+                ImGui::SameLine();
+                HelpMarker("Render Ground.");
+            }
 
             // if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
             //     isChanged |= ImGui::Combo("Lens", (int*)&mParams.mSceneParameters.camera.lensType(), kCameraLensTypeStrings, (int)Camera::LensType::kNumTypes);
@@ -746,27 +752,9 @@ void Viewer::drawAboutDialog()
     ImGui::Text("Build options:\n");
     {
         ImGui::BeginChild("##build", ImVec2(0, 60), true);
-#ifdef NANOVDB_USE_BLOSC
-        ImGui::BulletText("BLOSC");
-#endif
-#ifdef NANOVDB_USE_OPENVDB
-        ImGui::BulletText("OpenVDB");
-#endif
-#ifdef NANOVDB_USE_ZIP
-        ImGui::BulletText("ZLIB");
-#endif
-#ifdef NANOVDB_USE_TBB
-        ImGui::BulletText("Intel TBB");
-#endif
         ImGui::BulletText("NVIDIA CUDA");
 #ifdef NANOVDB_USE_OPENCL
         ImGui::BulletText("OpenCL");
-#endif
-#ifdef NANOVDB_USE_NFD
-        ImGui::BulletText("Native File Dialog");
-#endif
-#ifdef NANOVDB_USE_CURL
-        ImGui::BulletText("libCURL");
 #endif
         ImGui::EndChild();
     }
@@ -1312,7 +1300,7 @@ void Viewer::drawGridInfo(const std::string& url, const std::string& gridName)
         }
         ImGui::Text("Size:");
         ImGui::SameLine(150);
-        ImGui::Text("%" PRIu64 " MB", meta->gridSize());
+        ImGui::Text("%.2f MB", (double)meta->gridSize() /(1000.0 * 1000.0));
     } else {
         ImGui::TextUnformatted("Loading...");
     }
@@ -1332,7 +1320,8 @@ void Viewer::drawAssets()
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_None;
 
     ImGui::SetNextWindowSize(ImVec2(200, 200), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Assets", &mIsDrawingAssets, window_flags)) {
+    if (ImGui::Begin("Assets", &mIsDrawingAssets, window_flags)) 
+    {
         // get the resident assets and grids.
         auto residentAssetMap = mGridManager.getGridNameStatusInfo();
 
@@ -1448,24 +1437,92 @@ void Viewer::drawEventLog()
 #endif
 }
 
+void Viewer::drawIntroDialog(){
+
+    if (!mIsDrawingIntroDialog)
+        return;
+
+    ImVec2 screenSize = ImGui::GetIO().DisplaySize; // Get the current screen size
+    ImVec2 windowSize = ImVec2(500, 500); // Set your desired window size
+    ImVec2 windowPos = ImVec2((screenSize.x - windowSize.x) * 0.5f, (screenSize.y - windowSize.y) * 0.5f); // Calculate the center position
+
+    ImGui::SetNextWindowSize(windowSize);
+    ImGui::SetNextWindowPos(windowPos, ImGuiCond_Appearing);
+
+    //ImGui::SetWindowFontScale(1.5f);
+    ImGui::Begin("Volumetric Path Tracer", &mIsDrawingIntroDialog, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::TextWrapped("Introduction\n"
+                            "\n"
+                            "Path tracing is a rendering method that faithfully replicates how light moves through a scene, yielding images that closely mimic reality. It's the driving force behind realistic computer-generated imagery (CGI) in movies and games.\n\n"
+                            "OpenVDB, on the other hand, is a versatile tool for managing sparse volumes, initially developed by DreamWorks Animation. It efficiently handles complex, sparse data, finding applications in scientific simulations, computer graphics, and more.\n\n");        
+        ImGui::TextWrapped("Despite the incredible potential of path tracing and OpenVDB, one significant challenge we've faced in the past is their computational complexity. Creating interactive path tracing applications on traditional CPUs not possible. However, with the introduction of CUDA and OpenCL, we are able to harness the computational power of modern GPUs, making real-time simulations and interactive applications a reality.");
+    ImGui::End();
+    //ImGui::SetWindowFontScale(1.0f);
+}
+
+void Viewer::drawReferanceDialog(){
+    if (!mIsDrawingRenferanceDialog)
+        return;
+    ImVec2 screenSize = ImGui::GetIO().DisplaySize; // Get the current screen size
+    ImVec2 windowSize = ImVec2(500, 500); // Set your desired window size
+    ImVec2 windowPos = ImVec2((screenSize.x - windowSize.x) * 0.5f, (screenSize.y - windowSize.y) * 0.5f); // Calculate the center position
+
+    ImGui::SetNextWindowSize(windowSize);
+    ImGui::SetNextWindowPos(windowPos, ImGuiCond_Appearing);
+
+    //ImGui::SetWindowFontScale(1.5f);
+    ImGui::Begin("Refereances", &mIsDrawingIntroDialog, ImGuiWindowFlags_AlwaysAutoResize);
+        
+    ImGui::Text("Technologies:\n");
+    {
+        ImGui::BeginChild("#Tech", ImVec2(0, 100), true);
+        ImGui::BulletText("NVIDIA CUDA");
+        ImGui::BulletText("OpenVDB");
+        ImGui::BulletText("ImGUI");
+        ImGui::BulletText("OpenGL");
+        ImGui::BulletText("XWindows");
+        ImGui::EndChild();
+    }
+
+    ImGui::Text("Books:\n");
+    {
+        ImGui::BeginChild("#Book", ImVec2(0, 100), true);
+        ImGui::BulletText("CUDA By Example");
+        ImGui::BulletText("OpenVDB Documentation");
+        ImGui::BulletText("A GPU-Friendly and Portable VDB Data Structure For \nReal-Time Rendering And Simulation");
+        ImGui::BulletText("Ray Tracing in One Weekend (Series)");
+        ImGui::EndChild();
+    }
+
+    ImGui::Text("Tutorials:\n");
+    {
+        ImGui::BeginChild("#Video", ImVec2(0, 100), true);
+        ImGui::BulletText("Ray Tracing Series : Cherno");
+        ImGui::BulletText("Interactive Volume Rendering : Cem Yuksel");
+        ImGui::EndChild();
+    }
+
+    ImGui::End();
+}
+
 void Viewer::drawRenderStatsOverlay()
 {
     if (!mIsDrawingRenderStats)
         return;
 
-#if defined(NANOVDB_USE_IMGUI)
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_AlwaysAutoResize;
-    auto viewPos = ImGui::GetWindowPos();
-    auto viewSize = ImGui::GetWindowSize();
-#endif
+    ImVec2 viewPos = ImGui::GetWindowPos();
+    ImVec2 viewSize = ImGui::GetWindowSize();
     ImVec2 center = ImVec2(viewPos.x + viewSize.x / 2, viewPos.y + viewSize.y / 2);
 
-#if 1
-    const float DISTANCE = 10.0f;
-    ImGui::SetNextWindowPos(ImVec2(viewPos.x + viewSize.x - DISTANCE, viewPos.y + DISTANCE + 16), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+    const float DISTANCE = 20.0f;
+    
+    // Calculate the top-right corner position
+    ImVec2 cornerPos = ImVec2(viewPos.x + viewSize.x + DISTANCE, viewPos.y + DISTANCE);
+    
+    ImGui::SetNextWindowPos(cornerPos, ImGuiCond_Always, ImVec2(1.0f, 0.0f));
     ImGui::SetNextWindowBgAlpha(0.35f);
     window_flags |= ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
-#endif
 
     ImGui::SetNextWindowSize(ImVec2(200, 0), ImGuiCond_Always);
     if (ImGui::Begin("Render Stats:", &mIsDrawingRenderStats, window_flags)) {
@@ -1488,12 +1545,23 @@ void Viewer::drawMenuBar()
     bool openLoadURL = false;
 
     if (ImGui::BeginMainMenuBar()) {
-        
+
+        if (ImGui::BeginMenu("About")) 
+        {
+            if (ImGui::MenuItem("Intro", NULL, mIsDrawingSceneGraph, true)) {
+                mIsDrawingIntroDialog = !mIsDrawingIntroDialog;
+            }
+            if (ImGui::MenuItem("Referancecs", NULL, mIsDrawingAssets, true)) {
+                mIsDrawingRenferanceDialog = !mIsDrawingRenferanceDialog;
+            }
+            ImGui::EndMenu();
+        }
+
         if (ImGui::BeginMenu("View")) 
         {
-            if (ImGui::MenuItem("Show Log", NULL, mIsDrawingEventLog, true)) {
-                mIsDrawingEventLog = !mIsDrawingEventLog;
-            }
+            // if (ImGui::MenuItem("Show Log", NULL, mIsDrawingEventLog, true)) {
+            //     mIsDrawingEventLog = !mIsDrawingEventLog;
+            // }
             if (ImGui::MenuItem("Show Scene Graph", NULL, mIsDrawingSceneGraph, true)) {
                 mIsDrawingSceneGraph = !mIsDrawingSceneGraph;
             }

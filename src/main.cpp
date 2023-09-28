@@ -5,71 +5,6 @@
 #include "Renderer.h"
 #include "Viewer.h"
 
-// int main(int argc,char* argv[]){
-
-//     std::string                                         platformName;
-//     std::vector<std::pair<std::string, GridAssetUrl>>   urls;
-
-//     for(int i = 1; i < argc; ++i){
-
-//         std::string arg = argv[i];
-//         if(!arg.empty()){
-
-//             std::string urlStr = arg;
-//             std::string nodeName = "";
-//             auto pos = arg.find('=');
-//             if(pos != std::string::npos){
-//                 urlStr = arg.substr(pos+1);
-//                 nodeName = arg.substr(0,pos);
-//             }
-
-//             GridAssetUrl url(urlStr);
-//             urls.push_back(std::make_pair(nodeName, url));
-
-//             if(url.isSequence()){
-//                 // update frames start and end data
-//             }
-//         }
-//     }
-
-//     if(urls.size() > 0){
-//         std::map<std::string, std::vector<GridAssetUrl>> nodeGridMap;
-//         for(auto& nodeUrlPairs : urls){
-//             nodeGridMap[nodeUrlPairs.first].push_back(nodeUrlPairs.second);
-//         }
-
-//         for(auto &it : nodeGridMap){
-//             if(it.first.length()){
-//                 int attachmentIndex = 0;
-//                 //
-//                 for(size_t i = 0; i < it.second.size(); i++)
-//                 {
-//                     auto& assetUrl = it.second[i];
-//                     std::cout<<assetUrl.fullname()<<std::endl;
-//                     if(assetUrl.scheme() == "file" && assetUrl.gridName().empty()){
-//                         //get grid names from file
-//                         std::string gridName;
-//                         std::cout<<assetUrl.gridName();
-//                         //add grids to scene or renderer
-//                         // set scene node grid attachment
-//                     }else {
-                        
-//                     }
-//                 }
-//             }else {
-//                 //create scene node for each grid
-//             }
-//         }
-//             // set selectSceneNodeByIndex
-//             // reset Camera
-//     }
-
-//     // open window
-//     // run()
-//     // close
-
-//     return EXIT_SUCCESS;
-// }
 int main(int argc, char* argv[])
 {
     std::string                                       platformName;
@@ -78,6 +13,8 @@ int main(int argc, char* argv[])
 
     bool batch = false;
 
+    rendererParams.mWidth = 1024;
+    rendererParams.mHeight = 1024;
     // make an invalid range.
     rendererParams.mFrameStart = 0;
     rendererParams.mFrameEnd = -1;
@@ -115,37 +52,6 @@ int main(int argc, char* argv[])
             }
         }
     }
-
-    // collect the final parameters...
-    // rendererParams.mFrameStart = renderStringParams.get<int>("start", rendererParams.mFrameStart);
-    // rendererParams.mFrameEnd = renderStringParams.get<int>("end", rendererParams.mFrameEnd);
-    // rendererParams.mWidth = renderStringParams.get<int>("width", rendererParams.mWidth);
-    // rendererParams.mHeight = renderStringParams.get<int>("height", rendererParams.mHeight);
-    // rendererParams.mOutputFilePath = renderStringParams.get<std::string>("output", rendererParams.mOutputFilePath);
-    // rendererParams.mOutputExtension = renderStringParams.get<std::string>("output-format", rendererParams.mOutputExtension);
-    // rendererParams.mGoldPrefix = renderStringParams.get<std::string>("gold", rendererParams.mGoldPrefix);
-    // rendererParams.mMaterialOverride = renderStringParams.getEnum<MaterialClass>("material-override", kMaterialClassTypeStrings, (int)MaterialClass::kNumTypes, rendererParams.mMaterialOverride);
-    // rendererParams.mMaterialBlackbodyTemperature = renderStringParams.get<float>("material-blackbody-temperature", rendererParams.mMaterialBlackbodyTemperature);
-    // rendererParams.mMaterialVolumeDensity = renderStringParams.get<float>("material-volume-density", rendererParams.mMaterialVolumeDensity);
-
-    // rendererParams.mSceneParameters.sunDirection = renderStringParams.get<nanovdb::Vec3f>("sun-direction", rendererParams.mSceneParameters.sunDirection);
-    // rendererParams.mSceneParameters.samplesPerPixel = renderStringParams.get<int>("camera-samples", rendererParams.mSceneParameters.samplesPerPixel);
-    // rendererParams.mSceneParameters.useBackground = renderStringParams.get<bool>("background", rendererParams.mSceneParameters.useBackground);
-    // rendererParams.mSceneParameters.useLighting = renderStringParams.get<bool>("lighting", rendererParams.mSceneParameters.useLighting);
-    // rendererParams.mSceneParameters.useShadows = renderStringParams.get<bool>("shadows", rendererParams.mSceneParameters.useShadows);
-    // rendererParams.mSceneParameters.useGround = renderStringParams.get<bool>("ground", rendererParams.mSceneParameters.useGround);
-    // rendererParams.mSceneParameters.useGroundReflections = renderStringParams.get<bool>("ground-reflections", rendererParams.mSceneParameters.useGroundReflections);
-    // rendererParams.mSceneParameters.useTonemapping = renderStringParams.get<bool>("tonemapping", rendererParams.mSceneParameters.useTonemapping);
-    // rendererParams.mSceneParameters.tonemapWhitePoint = renderStringParams.get<float>("tonemapping-whitepoint", rendererParams.mSceneParameters.tonemapWhitePoint);
-    // rendererParams.mSceneParameters.camera.lensType() = renderStringParams.getEnum<Camera::LensType>("camera-lens", kCameraLensTypeStrings, (int)Camera::LensType::kNumTypes, rendererParams.mSceneParameters.camera.lensType());
-    // rendererParams.mUseTurntable = renderStringParams.get<bool>("camera-turntable", rendererParams.mUseTurntable);
-    // rendererParams.mTurntableRate = renderStringParams.get<float>("camera-turntable-rate", rendererParams.mTurntableRate);
-    // rendererParams.mCameraFov = renderStringParams.get<float>("camera-fov", rendererParams.mCameraFov);
-    // rendererParams.mCameraDistance = renderStringParams.get<float>("camera-distance", rendererParams.mCameraDistance);
-    // rendererParams.mCameraTarget = renderStringParams.get<nanovdb::Vec3f>("camera-target", rendererParams.mCameraTarget);
-    // rendererParams.mCameraRotation = renderStringParams.get<nanovdb::Vec3f>("camera-rotation", rendererParams.mCameraRotation);
-    // rendererParams.mMaxProgressiveSamples = renderStringParams.get<int>("iterations", rendererParams.mMaxProgressiveSamples);
-
     // if range still invalid, then make a default frame range...
     if (rendererParams.mFrameEnd < rendererParams.mFrameStart) {
         rendererParams.mFrameStart = 0;

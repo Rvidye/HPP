@@ -189,9 +189,9 @@ inline SceneRenderParameters makeSceneRenderParameters()
     params.useTonemapping = false;
     params.tonemapWhitePoint = 1.5f;
     params.useBackground = 1;
-    params.useGround = 1;
-    params.useShadows = 1;
-    params.useLighting = 1;
+    params.useGround = 0;
+    params.useShadows = 0;
+    params.useLighting = 0;
     params.useGroundReflections = 0;
     params.samplesPerPixel = 1;
     params.camera = Camera::makeDefaultCamera();

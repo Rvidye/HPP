@@ -165,13 +165,7 @@ bool RenderLauncherGL::ensureProgramResource(const std::shared_ptr<Resource>& re
         ss << fileToString(includeFilePath + g_kKernelString_NanoVDB_c);
         ss << fileToString(includeFilePath + g_kKernelString_HDDA_c);
         ss << fileToString(includeFilePath + g_kKernelString_renderCommon_h);
-        if (method == MaterialClass::kLevelSetFast) {
-            ss << fileToString(includeFilePath + g_kKernelString_renderLevelSet_c);
-        } else if (method == MaterialClass::kFogVolumePathTracer) {
-            ss << fileToString(includeFilePath + g_kKernelString_renderFogVolume_c);
-        } else {
-            ss << fileToString(includeFilePath + g_kKernelString_renderGrid_c);
-        }
+        ss << fileToString(includeFilePath + g_kKernelString_renderFogVolume_c);
     }
     catch (const std::exception& e) {
         std::cerr << "GLSL error: " << e.what() << std::endl;

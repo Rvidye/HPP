@@ -14,8 +14,8 @@ RenderLauncher::RenderLauncher()
 {
     mImpls.push_back(std::make_shared<RenderLauncherCpu>());
     mImpls.push_back(std::make_shared<RenderLauncherCpuMT>());
-    mImpls.push_back(std::make_shared<RenderLauncherC99>());
-    mImpls.push_back(std::make_shared<RenderLauncherGL>());
+    //mImpls.push_back(std::make_shared<RenderLauncherC99>());
+    //mImpls.push_back(std::make_shared<RenderLauncherGL>());
     mImpls.push_back(std::make_shared<RenderLauncherCUDA>());
 #if defined(NANOVDB_USE_OPENCL)
     mImpls.push_back(std::make_shared<RenderLauncherCL>());

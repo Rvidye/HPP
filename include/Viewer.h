@@ -54,6 +54,9 @@ private:
     bool         mIsDrawingEventLog = false;
     bool         mLogAutoScroll = true;
     bool         mIsDrawingPendingGlyph = false;
+    bool         mIsDrawingIntroDialog = false;
+    bool         mIsDrawingRenferanceDialog = false;
+
 
     bool drawPointRenderOptionsWidget(SceneNode::Ptr node, int attachmentIndex);
     void drawRenderStatsOverlay();
@@ -70,6 +73,8 @@ private:
     bool drawMaterialParameters(SceneNode::Ptr node, MaterialClass mat);
     bool drawMaterialGridAttachment(SceneNode::Ptr node, int attachmentIndex);
     void drawPendingGlyph();
+    void drawIntroDialog();
+    void drawReferanceDialog();
 
     std::string getScreenShotFilename(int iteration) const;
 
